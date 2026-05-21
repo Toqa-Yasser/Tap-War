@@ -1,0 +1,266 @@
+<div class="min-h-screen bg-gray-950 text-white flex flex-col items-center justify-start p-4" id="game-root" phx-hook="TapGame">
+
+  <%!-- ── Header ─────────────────────────────────────────────── --%>
+  <header class="w-full max-w-2xl flex items-center justify-between py-4 mb-2">
+    <h1 class="text-3xl font-extrabold tracking-tight">
+      <span class="text-yellow-400">TAP</span><span class="text-white">WAR</span>
+    </h1>
+    <span class="text-xs text-gray-500 font-mono">
+      <%= map_size(@players) %> player(s) connected
+    </span>
+  </header>
+
+  <%!-- ── Name setup panel ────────────────────────────────────── --%>
+  <%= if !@name_set do %>
+    <div class="w-full max-w-2xl bg-gray-900 rounded-2xl p-6 mb-6 border border-gray-800">
+      <p class="text-sm text-gray-400 mb-3">Set your display name before playing:</p>
+      <form phx-submit="set_name" class="flex gap-3">
+        <input
+          type="text"
+          name="name"
+          value={@name_input}
+          maxlength="20"
+          autocomplete="off"
+          placeholder="Your name"
+          class="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-yellow-400"
+        />
+        <button
+          type="submit"
+          class="bg-yellow-400 text-gray-950 font-bold px-5 py-2 rounded-xl hover:bg-yellow-300 transition"
+        >
+          Set
+        </button>
+      </form>
+    </div>
+  <% end %>
+
+  <%!-- ══════════════════════════════════════════════════════════
+        Phase-specific content
+       ══════════════════════════════════════════════════════════ --%>
+  <%= cond do %>
+
+    <%!-- WAITING ─────────────────────────────────────────────── --%>
+    <% @phase == :waiting -> %>
+      <div class="w-full max-w-2xl flex flex-col items-center gap-6">
+
+        <%!-- Player list with ready status --%>
+        <div class="bg-gray-900 rounded-2xl p-6 border border-gray-800 w-full">
+          <div class="flex items-center justify-between mb-4">
+            <p class="text-sm text-gray-400 uppercase tracking-widest font-semibold">Lobby</p>
+            <span class="text-xs font-mono text-gray-500">
+              <%= ready_count(@players) %>/<%= map_size(@players) %> ready
+            </span>
+          </div>
+
+          <%= if map_size(@players) == 0 do %>
+            <p class="text-gray-600 text-sm text-center py-4">No players yet. Share this URL!</p>
+          <% else %>
+            <div class="flex flex-col gap-2">
+              <%= for p <- Map.values(@players) do %>
+                <div class={[
+                  "flex items-center justify-between rounded-xl px-4 py-3 border",
+                  cond do
+                    p.id == @player_id and p.ready -> "bg-green-900/40 border-green-500/50"
+                    p.id == @player_id -> "bg-gray-800 border-gray-700"
+                    p.ready -> "bg-green-900/20 border-green-800/40"
+                    true -> "bg-gray-800 border-gray-700/40"
+                  end
+                ]}>
+                  <span class="font-semibold flex items-center gap-2">
+                    <%= if p.id == @player_id do %>
+                      <span class="text-yellow-400 text-xs">YOU</span>
+                    <% end %>
+                    <span class={if(p.ready, do: "text-white", else: "text-gray-400")}>
+                      <%= p.name %>
+                    </span>
+                  </span>
+                  <span class={[
+                    "text-xs font-bold px-2 py-1 rounded-full",
+                    if(p.ready, do: "bg-green-500 text-white", else: "bg-gray-700 text-gray-500")
+                  ]}>
+                    <%= if p.ready, do: "✓ READY", else: "NOT READY" %>
+                  </span>
+                </div>
+              <% end %>
+            </div>
+          <% end %>
+        </div>
+
+        <%!-- Per-player Ready toggle (Bug 1 fix) --%>
+        <%!-- Only show when name has been set and game is not already starting --%>
+        <%= if @name_set do %>
+          <button
+            phx-click="toggle_ready"
+            class={[
+              "w-full max-w-xs font-extrabold text-xl py-4 rounded-2xl transition shadow-lg",
+              if(my_ready?(@players, @player_id),
+                do: "bg-green-500 text-white hover:bg-green-400",
+                else: "bg-yellow-400 text-gray-950 hover:bg-yellow-300"
+              )
+            ]}
+          >
+            <%= if my_ready?(@players, @player_id), do: "✓ Ready! (click to cancel)", else: "I'm Ready!" %>
+          </button>
+        <% else %>
+          <p class="text-sm text-gray-500">Set your name above, then click Ready.</p>
+        <% end %>
+
+        <p class="text-xs text-gray-600">
+          Game starts automatically when <strong class="text-gray-400">all players</strong> click Ready (minimum 2).
+        </p>
+      </div>
+
+    <%!-- COUNTDOWN ───────────────────────────────────────────── --%>
+    <% @phase == :countdown -> %>
+      <div class="w-full max-w-2xl flex flex-col items-center gap-6">
+        <div class="text-center">
+          <p class="text-gray-400 text-lg mb-4 uppercase tracking-widest font-semibold">Get ready…</p>
+          <div class="text-9xl font-black text-yellow-400 animate-ping-once leading-none">
+            <%= @countdown %>
+          </div>
+        </div>
+
+        <div class="w-full bg-gray-900 rounded-2xl p-5 border border-gray-800">
+          <p class="text-xs text-gray-500 uppercase tracking-widest mb-3">Players</p>
+          <div class="flex flex-wrap gap-2">
+            <%= for p <- Map.values(@players) do %>
+              <span class={[
+                "text-sm px-3 py-1 rounded-full font-semibold",
+                if(p.id == @player_id, do: "bg-yellow-400 text-gray-950", else: "bg-gray-800 text-gray-300")
+              ]}>
+                <%= p.name %>
+              </span>
+            <% end %>
+          </div>
+        </div>
+      </div>
+
+    <%!-- PLAYING ────────────────────────────────────────────── --%>
+    <% @phase == :playing -> %>
+      <div class="w-full max-w-2xl flex flex-col items-center gap-5">
+
+        <div class="w-full">
+          <div class="flex justify-between text-xs text-gray-500 mb-1">
+            <span>TIME LEFT</span>
+            <span id="timer-label" class="font-mono text-yellow-400">15s</span>
+          </div>
+          <div class="w-full h-3 bg-gray-800 rounded-full overflow-hidden">
+            <div id="timer-bar" class="h-full bg-yellow-400 rounded-full transition-none" style="width: 100%"></div>
+          </div>
+        </div>
+
+        <div class="text-center">
+          <p class="text-gray-500 uppercase tracking-widest text-xs mb-1">Your taps</p>
+          <div id="my-taps" class="text-7xl font-black text-yellow-400 tabular-nums">
+            <%= my_taps(@players, @player_id) %>
+          </div>
+        </div>
+
+        <button
+          id="tap-btn"
+          phx-click="tap"
+          class="w-64 h-64 rounded-full bg-yellow-400 text-gray-950 font-extrabold text-2xl
+                 shadow-2xl hover:bg-yellow-300 active:scale-95 transition-transform
+                 select-none touch-none focus:outline-none"
+          aria-label="Tap"
+        >
+          TAP!
+        </button>
+
+        <p class="text-xs text-gray-600">
+          Press <kbd class="px-2 py-0.5 bg-gray-800 rounded font-mono">Space</kbd> or any key, or click the button.
+        </p>
+
+        <div class="w-full bg-gray-900 rounded-2xl p-5 border border-gray-800">
+          <p class="text-xs text-gray-500 uppercase tracking-widest mb-3">Leaderboard</p>
+          <div class="flex flex-col gap-2">
+            <%= for {p, idx} <- Enum.with_index(sorted_players(@players), 1) do %>
+              <div class={[
+                "flex items-center justify-between rounded-xl px-4 py-2",
+                cond do
+                  idx == 1 -> "bg-yellow-400/20 border border-yellow-400/40"
+                  p.id == @player_id -> "bg-blue-900/40 border border-blue-600/30"
+                  true -> "bg-gray-800"
+                end
+              ]}>
+                <span class="font-semibold text-sm flex items-center gap-2">
+                  <span class={["text-lg", if(idx == 1, do: "text-yellow-400", else: "text-gray-600")]}>
+                    <%= idx %>
+                  </span>
+                  <span class={if(p.id == @player_id, do: "text-yellow-200", else: "text-gray-200")}>
+                    <%= if p.id == @player_id, do: "★ ", else: "" %><%= p.name %>
+                  </span>
+                </span>
+                <span class="font-black text-lg tabular-nums text-yellow-400"><%= p.taps %></span>
+              </div>
+            <% end %>
+          </div>
+        </div>
+
+      </div>
+
+    <%!-- FINISHED ───────────────────────────────────────────── --%>
+    <% @phase == :finished -> %>
+      <div class="w-full max-w-2xl flex flex-col items-center gap-6">
+
+        <%!-- Personalised result banner — every player knows their outcome --%>
+        <%= case my_result(@players, @player_id) do %>
+          <% :won -> %>
+            <div class="w-full text-center bg-yellow-400/20 border border-yellow-400/60 rounded-2xl py-6 px-4">
+              <div class="text-5xl mb-2">🏆</div>
+              <div class="text-3xl font-black text-yellow-400">You Won!</div>
+              <div class="text-gray-400 mt-1 text-sm"><%= my_taps(@players, @player_id) %> taps</div>
+            </div>
+          <% :tied -> %>
+            <div class="w-full text-center bg-blue-900/30 border border-blue-500/40 rounded-2xl py-6 px-4">
+              <div class="text-5xl mb-2">🤝</div>
+              <div class="text-3xl font-black text-blue-400">It's a Tie!</div>
+              <div class="text-gray-400 mt-1 text-sm"><%= my_taps(@players, @player_id) %> taps</div>
+            </div>
+          <% :lost -> %>
+            <div class="w-full text-center bg-gray-800/60 border border-gray-700 rounded-2xl py-6 px-4">
+              <div class="text-5xl mb-2">😔</div>
+              <div class="text-3xl font-black text-gray-400">You Lost</div>
+              <div class="text-gray-500 mt-1 text-sm"><%= my_taps(@players, @player_id) %> taps — better luck next round!</div>
+            </div>
+        <% end %>
+
+        <div class="w-full bg-gray-900 rounded-2xl p-5 border border-gray-800">
+          <p class="text-xs text-gray-500 uppercase tracking-widest mb-3">Final Scores</p>
+          <div class="flex flex-col gap-2">
+            <%= for {p, idx} <- Enum.with_index(sorted_players(@players), 1) do %>
+              <div class={[
+                "flex items-center justify-between rounded-xl px-4 py-3",
+                cond do
+                  idx == 1 -> "bg-yellow-400/20 border border-yellow-400/40"
+                  p.id == @player_id -> "bg-blue-900/40 border border-blue-600/30"
+                  true -> "bg-gray-800"
+                end
+              ]}>
+                <div class="flex items-center gap-3">
+                  <span class="text-2xl">
+                    <%= case idx do
+                      1 -> "🥇"
+                      2 -> "🥈"
+                      3 -> "🥉"
+                      _ -> "#{idx}."
+                    end %>
+                  </span>
+                  <span class={["font-semibold", if(p.id == @player_id, do: "text-yellow-200", else: "text-gray-200")]}>
+                    <%= if p.id == @player_id, do: "★ ", else: "" %><%= p.name %>
+                  </span>
+                </div>
+                <span class="font-black text-2xl tabular-nums text-yellow-400"><%= p.taps %></span>
+              </div>
+            <% end %>
+          </div>
+        </div>
+
+        <p class="text-sm text-gray-500 animate-pulse">Returning to lobby in a few seconds…</p>
+      </div>
+
+    <% true -> %>
+      <div></div>
+  <% end %>
+
+</div>
